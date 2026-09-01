@@ -72,6 +72,7 @@ origins = [
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
+    "https://digi-bazar.vercel.app",
 ]
 if isinstance(settings.CORS_ORIGINS, list):
     origins.extend([o for o in settings.CORS_ORIGINS if o not in origins])
@@ -79,20 +80,39 @@ if isinstance(settings.CORS_ORIGINS, list):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+    allow_origin_regex=r"https?://.*\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+def add_cors_headers(request: Request, response: JSONResponse) -> JSONResponse:
+    origin = request.headers.get("origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    else:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logging.error(f"Unhandled Exception on {request.url}: {exc}", exc_info=True)
-    return JSONResponse(
+    resp = JSONResponse(
         status_code=500,
         content={"detail": "Internal Server Error", "error": str(exc)},
     )
+    return add_cors_headers(request, resp)
+
+
+@app.options("/{full_path:path}")
+async def options_fallback_handler(full_path: str, request: Request):
+    resp = JSONResponse(content={"status": "ok"})
+    return add_cors_headers(request, resp)
 
 # Include routers
 app.include_router(public_router)
